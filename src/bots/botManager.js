@@ -85,26 +85,42 @@ const attachHandlers = (bot, config, bot_id) => {
     const liveConfig = entry?.config ?? config;
 
     try {
-      // --- Purchase intent: generate Stripe checkout session ---
-      if (isPurchaseIntent(userText) && entry?.stripe_account_id) {
-        try {
-          const session = await createCheckoutSession(
-            entry.stripe_account_id,
-            liveConfig,
-            telegramId,
-            bot_id
-          );
+      // --- Purchase intent ---
+      if (isPurchaseIntent(userText)) {
+
+        // Option A: Stripe connected — generate dynamic checkout session
+        if (entry?.stripe_account_id) {
+          try {
+            const session = await createCheckoutSession(
+              entry.stripe_account_id,
+              liveConfig,
+              telegramId,
+              bot_id
+            );
+            await ctx.reply(
+              `🛒 Ótimo! Para finalizar sua compra de *${liveConfig.produto || 'nosso produto'}*, ` +
+              `acesse o link abaixo:\n\n${session.url}\n\n` +
+              `✅ Após o pagamento você receberá o acesso automaticamente.`,
+              { parse_mode: 'Markdown' }
+            );
+            return;
+          } catch (stripeErr) {
+            console.error(`[Bot ${bot_id}] ⚠️  Stripe session error:`, stripeErr.message);
+            // Fall through to static link if Stripe fails
+          }
+        }
+
+        // Option B: No Stripe (or Stripe failed) — use static payment link
+        if (liveConfig.link_pagamento) {
           await ctx.reply(
-            `🛒 Ótimo! Para finalizar sua compra de *${liveConfig.produto || 'nosso produto'}*, ` +
-            `acesse o link abaixo:\n\n${session.url}\n\n` +
-            `✅ Após o pagamento você receberá o acesso automaticamente.`,
+            `🛒 Para adquirir *${liveConfig.produto || 'nosso produto'}* ` +
+            `por *${liveConfig.preco || ''}*, acesse:\n\n${liveConfig.link_pagamento}`,
             { parse_mode: 'Markdown' }
           );
           return;
-        } catch (stripeErr) {
-          console.error(`[Bot ${bot_id}] ⚠️  Stripe session error:`, stripeErr.message);
-          // Fall through to AI response if Stripe fails
         }
+
+        // Option C: No link at all — let AI handle it
       }
 
       // --- No Stripe or no purchase intent: use AI ---
