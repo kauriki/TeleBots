@@ -1,20 +1,22 @@
 {
   "name": "telegram-saas-backend",
-  "version": "1.0.0",
-  "description": "SaaS backend for multi-tenant Telegram bots with AI integration",
+  "version": "1.1.0",
+  "description": "SaaS backend for multi-tenant Telegram bots with AI integration and Stripe Connect",
   "main": "src/index.js",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "nodemon src/index.js",
-    "db:init": "node src/db/initDb.js"
+    "start":      "node src/index.js",
+    "dev":        "nodemon src/index.js",
+    "db:init":    "node src/db/initDb.js",
+    "db:migrate": "node src/db/migrateStripe.js"
   },
   "dependencies": {
-    "axios": "^1.6.5",
-    "dotenv": "^16.4.1",
-    "express": "^4.18.2",
-    "pg": "^8.11.3",
+    "axios":    "^1.6.5",
+    "dotenv":   "^16.4.1",
+    "express":  "^4.18.2",
+    "pg":       "^8.11.3",
+    "stripe":   "^17.0.0",
     "telegraf": "^4.16.3",
-    "uuid": "^9.0.0"
+    "uuid":     "^9.0.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.3"
