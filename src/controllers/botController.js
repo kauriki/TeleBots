@@ -21,19 +21,14 @@ const createBot = async (req, res) => {
   const { user_id, bot_token, config } = req.body;
 
   try {
-    // 1. Ensure user exists (or create on first use)
-    const userResult = await db.query(
-      `INSERT INTO users (id) VALUES ($1) ON CONFLICT (id) DO NOTHING RETURNING id`,
+    // 1. Ensure user exists — create on first use
+    //    email is intentionally omitted (nullable) because user_id comes from Base44
+    await db.query(
+      `INSERT INTO users (id) VALUES ($1) ON CONFLICT (id) DO NOTHING`,
       [user_id]
     );
-    // If user_id was not a valid UUID the query would throw — that's expected
 
-    // 2. Check for duplicate bot token for this user
-    const duplicate = await db.query(
-      `SELECT id FROM bots WHERE user_id = $1 AND status = 'active'`,
-      [user_id]
-    );
-    // (Optionally check by bot_token uniqueness across all users)
+    // 2. Check for duplicate bot token across all users
     const tokenDupe = await db.query(
       `SELECT id FROM bots WHERE bot_token = $1`,
       [bot_token]
@@ -49,22 +44,35 @@ const createBot = async (req, res) => {
       [bot_id, user_id, bot_token]
     );
 
-    // 4. Insert config
+    // 4. Insert config (includes link_entrega if provided)
     await db.query(
-      `INSERT INTO configs (id, bot_id, produto, preco, tom, link_pagamento)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
+      `INSERT INTO configs (id, bot_id, produto, preco, tom, link_pagamento, link_entrega)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [
         uuidv4(),
         bot_id,
-        config.produto || null,
-        config.preco || null,
-        config.tom || 'amigável e profissional',
+        config.produto        || null,
+        config.preco          || null,
+        config.tom            || 'amigável e profissional',
         config.link_pagamento || null,
+        config.link_entrega   || null,
       ]
     );
 
-    // 5. Launch bot in memory
-    await botManager.createBot({ bot_id, bot_token, config });
+    // 5. Fetch the owner's stripe_account_id to pass to botManager
+    const userResult = await db.query(
+      `SELECT stripe_account_id FROM users WHERE id = $1`,
+      [user_id]
+    );
+    const stripe_account_id = userResult.rows[0]?.stripe_account_id || null;
+
+    // 6. Launch bot in memory
+    await botManager.createBot({
+      bot_id,
+      bot_token,
+      stripe_account_id,
+      config,
+    });
 
     console.log(`[API] ✅ Bot created successfully. ID: ${bot_id}, User: ${user_id}`);
 
@@ -75,7 +83,6 @@ const createBot = async (req, res) => {
   } catch (err) {
     console.error('[API] ❌ /create-bot error:', err.message);
 
-    // Handle Telegraf token-rejection specifically
     if (err.message.includes('401') || err.message.includes('token')) {
       return res.status(400).json({ error: 'Invalid Telegram bot token.' });
     }
@@ -91,7 +98,6 @@ const updateConfig = async (req, res) => {
   const { bot_id, config } = req.body;
 
   try {
-    // Verify bot exists and is active
     const botResult = await db.query(
       `SELECT id FROM bots WHERE id = $1 AND status = 'active'`,
       [bot_id]
@@ -101,9 +107,9 @@ const updateConfig = async (req, res) => {
     }
 
     // Build dynamic SET clause — only update provided fields
-    const allowedFields = ['produto', 'preco', 'tom', 'link_pagamento'];
+    const allowedFields = ['produto', 'preco', 'tom', 'link_pagamento', 'link_entrega'];
     const updates = [];
-    const values = [];
+    const values  = [];
     let idx = 1;
 
     for (const field of allowedFields) {
@@ -114,15 +120,19 @@ const updateConfig = async (req, res) => {
       }
     }
 
-    values.push(new Date());  // updated_at
-    values.push(bot_id);      // WHERE clause
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No valid fields provided to update.' });
+    }
+
+    values.push(new Date()); // updated_at
+    values.push(bot_id);    // WHERE
 
     await db.query(
       `UPDATE configs SET ${updates.join(', ')}, updated_at = $${idx} WHERE bot_id = $${idx + 1}`,
       values
     );
 
-    // Live-update the in-memory config (no restart needed)
+    // Live-update in memory (no restart needed)
     botManager.updateBotConfig(bot_id, config);
 
     console.log(`[API] 🔄 Config updated for bot: ${bot_id}`);
@@ -141,7 +151,6 @@ const deleteBot = async (req, res) => {
   const { bot_id } = req.body;
 
   try {
-    // Verify bot exists
     const botResult = await db.query(
       `SELECT id FROM bots WHERE id = $1`,
       [bot_id]
@@ -150,10 +159,8 @@ const deleteBot = async (req, res) => {
       return res.status(404).json({ error: 'Bot not found.' });
     }
 
-    // Stop in memory (safe even if not running)
     botManager.stopBot(bot_id);
 
-    // Mark as inactive in DB
     await db.query(
       `UPDATE bots SET status = 'inactive' WHERE id = $1`,
       [bot_id]
@@ -185,6 +192,7 @@ const listBots = async (req, res) => {
          c.preco,
          c.tom,
          c.link_pagamento,
+         c.link_entrega,
          c.updated_at AS config_updated_at
        FROM bots b
        LEFT JOIN configs c ON c.bot_id = b.id
@@ -208,7 +216,7 @@ const getStatus = (_req, res) => {
   const activeBots = botManager.getActiveBots();
   return res.json({
     active_count: activeBots.length,
-    active_bots: activeBots,
+    active_bots:  activeBots,
   });
 };
 
