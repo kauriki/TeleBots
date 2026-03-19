@@ -2,23 +2,32 @@
 -- MIGRATION: Add Stripe Connect Support
 -- =============================================
 -- Run via: npm run db:migrate
--- Safe to re-run (uses IF NOT EXISTS / IF NOT EXISTS guards)
+-- Safe to re-run (all statements are idempotent)
+--
+-- NOTE: If starting from scratch, run db:init instead.
+--       This migration is only needed for existing databases
+--       that used the old schema.
 
 -- -----------------------------------------------
--- 1. Add stripe_account_id to users
+-- 1. Make users.email nullable (was NOT NULL in old schema)
+-- -----------------------------------------------
+ALTER TABLE users
+  ALTER COLUMN email DROP NOT NULL;
+
+-- -----------------------------------------------
+-- 2. Add stripe_account_id to users
 -- -----------------------------------------------
 ALTER TABLE users
   ADD COLUMN IF NOT EXISTS stripe_account_id TEXT;
 
 -- -----------------------------------------------
--- 2. Add link_entrega to configs
---    (delivery URL sent to buyer after payment)
+-- 3. Add link_entrega to configs
 -- -----------------------------------------------
 ALTER TABLE configs
   ADD COLUMN IF NOT EXISTS link_entrega TEXT;
 
 -- -----------------------------------------------
--- 3. Create payments table
+-- 4. Create payments table
 -- -----------------------------------------------
 CREATE TABLE IF NOT EXISTS payments (
     id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
