@@ -1,10 +1,10 @@
 'use strict';
 
 /**
- * validate.js — Request Validation Middleware Factories
+ * validate.js — Request Validation Middleware
  *
  * Each exported function returns an Express middleware that validates
- * a specific request body and rejects invalid requests with 400.
+ * a specific request and rejects invalid requests with 400.
  */
 
 const validateCreateBot = (req, res, next) => {
@@ -36,6 +36,16 @@ const validateCreateBot = (req, res, next) => {
     return res.status(400).json({ error: 'Field "config.preco" is required.' });
   }
 
+  // link_entrega is optional but must be a string if provided
+  if (config.link_entrega !== undefined && typeof config.link_entrega !== 'string') {
+    return res.status(400).json({ error: 'Field "config.link_entrega" must be a string.' });
+  }
+
+  // link_pagamento is optional but must be a string if provided
+  if (config.link_pagamento !== undefined && typeof config.link_pagamento !== 'string') {
+    return res.status(400).json({ error: 'Field "config.link_pagamento" must be a string.' });
+  }
+
   next();
 };
 
@@ -50,7 +60,7 @@ const validateUpdateConfig = (req, res, next) => {
     return res.status(400).json({ error: 'Field "config" must be an object.' });
   }
 
-  const allowedFields = ['produto', 'preco', 'tom', 'link_pagamento'];
+  const allowedFields = ['produto', 'preco', 'tom', 'link_pagamento', 'link_entrega'];
   const hasAtLeastOne = allowedFields.some((f) => config[f] !== undefined);
   if (!hasAtLeastOne) {
     return res.status(400).json({
