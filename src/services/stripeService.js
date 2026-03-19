@@ -77,11 +77,26 @@ const generateAccountLink = async (accountId) => {
  */
 const parsePriceToCents = (preco) => {
   if (!preco) return 1000;
-  // Remove currency symbols, spaces; normalise decimal separator
-  const cleaned = preco
-    .replace(/[R$\s]/g, '')
-    .replace(/\./g, '')     // remove thousands separator (BR: 1.000,00)
-    .replace(',', '.');     // convert decimal separator
+
+  // Remove currency symbol and spaces
+  let cleaned = preco.replace(/[R$\s]/g, '');
+
+  if (cleaned.includes(',')) {
+    // Brazilian format: comma is always the decimal separator
+    // Dots (if any) are thousands separators — remove them first
+    // e.g. "1.000,00" → "1000.00"  |  "197,00" → "197.00"
+    cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+  } else if (cleaned.includes('.')) {
+    // Dot only — decide if it's decimal or thousands:
+    // If there is exactly ONE dot and at most 2 digits after it → decimal  (e.g. "197.50")
+    // Otherwise → thousands separator with no cents            (e.g. "1.000")
+    const parts = cleaned.split('.');
+    const isDecimal = parts.length === 2 && parts[1].length <= 2;
+    if (!isDecimal) {
+      cleaned = cleaned.replace(/\./g, ''); // strip thousands dots
+    }
+  }
+
   const value = parseFloat(cleaned);
   if (isNaN(value) || value <= 0) return 1000;
   return Math.round(value * 100);
